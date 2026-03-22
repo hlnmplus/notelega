@@ -1,7 +1,8 @@
 from asyncio import run
-from aiogram import types, Bot, Dispatcher
+from aiogram import types, Bot, Dispatcher, F
 from aiogram.filters import ChatMemberUpdatedFilter
 from aiogram.filters.chat_member_updated import IS_NOT_MEMBER, IS_MEMBER
+from aiogram.types import InlineQueryResultArticle, InputTextMessageContent
 from aiogram.filters.command import Command
 from os import getenv
 from dotenv import load_dotenv
@@ -79,12 +80,28 @@ async def start(message: types.Message):
         )
 
 
+@dp.message(Command("check"))
+async def start(message: types.Message):
+    if len(message.text.split()) > 1:
+        id = message.text.split()[1]
+    else:
+        await message.reply("укажи id после команды, например: /check 5224925247")
+        return
+    if not id.isdigit():
+        await message.reply("id должен быть числом, например: /check 5224925247")
+        return
+    await message.reply("проверяю...")
+    await message.reply(
+        f"{id}{'' if await is_telega_user(int(id)) else ' не'} является пользователем Telega."
+    )
+
+
 @dp.message()
 async def check(message: types.Message):
     if message.chat.type == "private" and message.text.isdigit():
         await message.reply("проверяю...")
         await message.reply(
-            f"id{message.text} {"является" if await is_telega_user(int(message.text)) else "не является"} пользователем Telega."
+            f"{message.text}{'' if await is_telega_user(int(message.text)) else ' не'} является пользователем Telega."
         )
 
 
@@ -103,6 +120,45 @@ async def joined(event: types.ChatMemberUpdated):
             event.chat.id,
             f"{note} (id: {event.new_chat_member.user.id}) — пользователь Telega.",
         )
+
+
+@dp.inline_query(F.query.regexp(r"^\d+$"))
+async def inline_check_id(query: types.InlineQuery):
+    user_id = int(query.query)
+    is_telega = await is_telega_user(user_id)
+    if is_telega:
+        title = f"{user_id} — пользователь Telega ❌"
+        text = f"{user_id} является пользователем Telega ❌"
+    else:
+        title = f"{user_id} — не пользователь Telega ✅"
+        text = f"{user_id} не является пользователем Telega ✅"
+    await query.answer(
+        results=[
+            InlineQueryResultArticle(
+                id=str(user_id),
+                title=title,
+                input_message_content=InputTextMessageContent(message_text=text),
+            )
+        ],
+        cache_time=60,
+    )
+
+
+@dp.inline_query()
+async def inline_hint(query: types.InlineQuery):
+    await query.answer(
+        results=[
+            InlineQueryResultArticle(
+                id="hint",
+                title="введите Telegram ID для проверки",
+                description="например: 5224925247",
+                input_message_content=InputTextMessageContent(
+                    message_text="для проверки введите числовой Telegram ID после имени бота."
+                ),
+            )
+        ],
+        cache_time=0,
+    )
 
 
 async def main():
