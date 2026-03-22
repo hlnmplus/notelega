@@ -14,8 +14,13 @@ import json
 CALLS_BASE_URL = getenv("CALLS_BASE_URL")
 CALLS_API_KEY = getenv("CALLS_API_KEY")
 
+with open("db.json") as f:
+    db = json.load(f)
+
 
 async def is_telega_user(telegram_id: int) -> bool:
+    if telegram_id in db:
+        return True
     async with aiohttp.ClientSession() as session:
         auth_payload = {
             "application_key": CALLS_API_KEY,
@@ -50,10 +55,14 @@ async def is_telega_user(telegram_id: int) -> bool:
             data = await resp.json()
 
             ids = data.get("ids", [])
-            return any(
+            if any(
                 item.get("external_user_id", {}).get("id") == str(telegram_id)
                 for item in ids
-            )
+            ):
+                db.append(telegram_id)
+                with open("db.json", "w") as f:
+                    json.dump(db, f)
+                return True
 
 
 bot = Bot(token=getenv("APIKEY"))
@@ -67,6 +76,15 @@ async def start(message: types.Message):
     else:
         await message.reply(
             "я блокирую всех новых участников в твоём чате, если они пользуются Telega. подробнее о том, как это всё работает: https://github.com/hlnmplus/notelega"
+        )
+
+
+@dp.message()
+async def check(message: types.Message):
+    if message.chat.type == "private" and message.text.isdigit():
+        await message.reply("проверяю...")
+        await message.reply(
+            f"id{message.text} {"является" if await is_telega_user(int(message.text)) else "не является"} пользователем Telega."
         )
 
 
