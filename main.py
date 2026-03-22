@@ -1,8 +1,9 @@
 from asyncio import run, sleep
-from aiogram import types, Bot, Dispatcher
+from aiogram import types, Bot, Dispatcher, F
 from aiogram.filters import ChatMemberUpdatedFilter
 from aiogram.filters.chat_member_updated import IS_NOT_MEMBER, IS_MEMBER, ADMINISTRATOR, CREATOR
 from aiogram.filters.command import Command
+from aiogram.types import InlineQueryResultArticle, InputTextMessageContent
 from os import getenv
 from dotenv import load_dotenv
 import time
@@ -137,12 +138,62 @@ async def scan(message: types.Message):
 
 @dp.message(Command("start"))
 async def start(message: types.Message):
-    if message.chat.type != "private":
-        await message.react(reaction=[types.ReactionTypeEmoji(emoji="👍")])
-    else:
+    if message.chat.type == "private":
         await message.reply(
             "я блокирую всех новых участников в твоём чате, если они пользуются Telega. подробнее о том, как это всё работает: https://github.com/hlnmplus/notelega"
         )
+    else:
+        adder_mention = f"@{message.from_user.username}" if message.from_user.username else message.from_user.full_name
+        total = len(db)
+        today = get_daily_count()
+        text = (
+            f"{adder_mention}, привет! Я бесплатный бот, который автоматически блокирует пользователей "
+            f"Telega — кремлёвского форка Telegram.\n\n"
+            f"С момента запуска я уже заблокировал {total} пользователей "
+            f"(включая {today} за последние сутки).\n\n"
+            f"Подробнее о принципе работы: https://github.com/hlnmplus/notelega\n\n"
+            f"Сообщение будет автоматически удалено через две минуты."
+        )
+        msg = await message.reply(text)
+        await sleep(120)
+        await msg.delete()
+
+
+@dp.inline_query(F.query.regexp(r"^\d+$"))
+async def inline_check_id(query: types.InlineQuery):
+    user_id = int(query.query)
+    is_telega = await is_telega_user(user_id)
+    if is_telega:
+        title = f"id{user_id} — пользователь Telega ✅"
+        text = f"id{user_id} является пользователем Telega."
+    else:
+        title = f"id{user_id} — не пользователь Telega ❌"
+        text = f"id{user_id} не является пользователем Telega."
+    await query.answer(
+        results=[
+            InlineQueryResultArticle(
+                id=str(user_id),
+                title=title,
+                input_message_content=InputTextMessageContent(message_text=text),
+            )
+        ],
+        cache_time=60,
+    )
+
+
+@dp.inline_query()
+async def inline_hint(query: types.InlineQuery):
+    await query.answer(
+        results=[
+            InlineQueryResultArticle(
+                id="hint",
+                title="введите Telegram ID для проверки",
+                description="например: 1363800669",
+                input_message_content=InputTextMessageContent(message_text="для проверки введите числовой Telegram ID после имени бота."),
+            )
+        ],
+        cache_time=0,
+    )
 
 
 @dp.message()
