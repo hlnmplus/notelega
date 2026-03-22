@@ -2,7 +2,11 @@ from asyncio import run
 from aiogram import types, Bot, Dispatcher, F
 from aiogram.filters import ChatMemberUpdatedFilter
 from aiogram.filters.chat_member_updated import IS_NOT_MEMBER, IS_MEMBER
-from aiogram.types import InlineQueryResultArticle, InputTextMessageContent
+from aiogram.types import (
+    InlineQueryResultArticle,
+    InputTextMessageContent,
+    ChatMemberAdministrator,
+)
 from aiogram.filters.command import Command
 from os import getenv
 from dotenv import load_dotenv
@@ -80,15 +84,15 @@ async def start(message: types.Message):
         )
 
 
-@dp.message(Command("check"))
+@dp.message(Command("istelega"))
 async def start(message: types.Message):
     if len(message.text.split()) > 1:
         id = message.text.split()[1]
     else:
-        await message.reply("укажи id после команды, например: /check 5224925247")
+        await message.reply("укажи id после команды, например: /istelega 5224925247")
         return
     if not id.isdigit():
-        await message.reply("id должен быть числом, например: /check 5224925247")
+        await message.reply("id должен быть числом, например: /istelega 5224925247")
         return
     await message.reply("проверяю...")
     await message.reply(
@@ -108,7 +112,9 @@ async def check(message: types.Message):
 @dp.chat_member(ChatMemberUpdatedFilter(IS_NOT_MEMBER >> IS_MEMBER))
 async def joined(event: types.ChatMemberUpdated):
     if await is_telega_user(event.new_chat_member.user.id):
-        await event.chat.ban(event.new_chat_member.user.id)
+        me = await event.bot.get_chat_member(event.chat.id, await event.bot.get_me().id)
+        if type(me) == ChatMemberAdministrator and me.can_restrict_members == True:
+            await event.chat.ban(event.new_chat_member.user.id)
 
         note = (
             f"@{event.new_chat_member.user.username}"
