@@ -102,7 +102,7 @@ async def start(message: types.Message):
 
 @dp.message()
 async def check(message: types.Message):
-    if message.chat.type == "private" and message.text.isdigit():
+    if message.chat.type == "private" and message.text and message.text.isdigit():
         await message.reply("проверяю...")
         await message.reply(
             f"{message.text}{'' if await is_telega_user(int(message.text)) else ' не'} является пользователем Telega."
