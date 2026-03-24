@@ -27,7 +27,7 @@ async def start(message: types.Message):
         await message.react(reaction=[types.ReactionTypeEmoji(emoji="👍")])
     else:
         await message.reply(
-            "я блокирую всех новых участников в твоём чате, если они пользуются Telega. подробнее о том, как это всё работает: https://github.com/hlnmplus/notelega"
+            "отправь мне ID (можно в inline-режиме), и я скажу, пользуется ли человек Telega. а ещё я блокирую всех новых участников в твоём чате, если они пользуются Telega. подробнее о том, как это всё работает: https://github.com/hlnmplus/notelega"
         )
 
 
