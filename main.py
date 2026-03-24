@@ -13,6 +13,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import logging
+logging.basicConfig(level = logging.INFO)
+
 import aiohttp
 import json
 
@@ -22,52 +25,66 @@ CALLS_API_KEY = getenv("CALLS_API_KEY")
 with open("db.json") as f:
     db = json.load(f)
 
+cached_session_key = None
+
 
 async def is_telega_user(telegram_id: int) -> bool:
     if telegram_id in db:
         return True
-    async with aiohttp.ClientSession() as session:
-        auth_payload = {
-            "application_key": CALLS_API_KEY,
-            "session_data": json.dumps(
-                {
-                    "device_id": "test",
-                    "version": 2,
-                    "client_version": "android_8",
-                    "client_type": "SDK_ANDROID",
+    global cached_session_key
+    while True:
+        if cached_session_key is None:
+            async with aiohttp.ClientSession() as session:
+                auth_payload = {
+                    "application_key": CALLS_API_KEY,
+                    "session_data": json.dumps(
+                        {
+                            "device_id": "test",
+                            "version": 2,
+                            "client_version": "android_8",
+                            "client_type": "SDK_ANDROID",
+                        }
+                    ),
                 }
-            ),
-        }
 
-        async with session.post(
-            f"{CALLS_BASE_URL}/api/auth/anonymLogin", data=auth_payload
-        ) as resp:
-            auth_data = await resp.json()
-            session_key = auth_data.get("session_key")
+                async with session.post(
+                    f"{CALLS_BASE_URL}/api/auth/anonymLogin", data=auth_payload
+                ) as resp:
+                    print("getting new anonkey")
+                    auth_data = await resp.json()
+                    cached_session_key = auth_data.get("session_key")
 
-            if not session_key:
+                    if not cached_session_key:
+                        return False
+
+        async with aiohttp.ClientSession() as session:
+            lookup_payload = {
+                "application_key": CALLS_API_KEY,
+                "session_key": cached_session_key,
+                "externalIds": json.dumps([{"id": str(telegram_id), "ok_anonym": False}]),
+            }
+
+            async with session.post(
+                f"{CALLS_BASE_URL}/api/vchat/getOkIdsByExternalIds", data=lookup_payload
+            ) as resp:
+                data = await resp.json()
+
+                ids = data.get("ids", [])
+                error_code = data.get("error_code")
+
+                if not ("ids" in data or data.get("error_code") == 4):
+                    cached_session_key = None
+                    continue
+
+                if any(
+                    item.get("external_user_id", {}).get("id") == str(telegram_id)
+                    for item in ids
+                ):
+                    db.append(telegram_id)
+                    with open("db.json", "w") as f:
+                        json.dump(db, f)
+                    return True
                 return False
-
-        lookup_payload = {
-            "application_key": CALLS_API_KEY,
-            "session_key": session_key,
-            "externalIds": json.dumps([{"id": str(telegram_id), "ok_anonym": False}]),
-        }
-
-        async with session.post(
-            f"{CALLS_BASE_URL}/api/vchat/getOkIdsByExternalIds", data=lookup_payload
-        ) as resp:
-            data = await resp.json()
-
-            ids = data.get("ids", [])
-            if any(
-                item.get("external_user_id", {}).get("id") == str(telegram_id)
-                for item in ids
-            ):
-                db.append(telegram_id)
-                with open("db.json", "w") as f:
-                    json.dump(db, f)
-                return True
 
 
 bot = Bot(token=getenv("APIKEY"))
