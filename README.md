@@ -289,3 +289,14 @@ c payload:
   "message": "Recipient not found"
 }
 ```
+
+Если «дозвониться» удалось — очищаем звонок. call_id тот же, что и в респонсе выше
+
+> ```POST https://api.telega.info/v1/api/calls/end```
+с payload:
+
+```json
+{
+  "call_id": callId
+}
+```
