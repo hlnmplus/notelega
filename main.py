@@ -13,82 +13,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-import logging
-logging.basicConfig(level = logging.INFO)
-
-import aiohttp
-import json
-
-CALLS_BASE_URL = getenv("CALLS_BASE_URL")
-CALLS_API_KEY = getenv("CALLS_API_KEY")
-
-with open("db.json") as f:
-    db = json.load(f)
-
-cached_session_key = None
-
-
-async def is_telega_user(telegram_id: int) -> bool:
-    if telegram_id in db:
-        return True
-    global cached_session_key
-    while True:
-        if cached_session_key is None:
-            async with aiohttp.ClientSession() as session:
-                auth_payload = {
-                    "application_key": CALLS_API_KEY,
-                    "session_data": json.dumps(
-                        {
-                            "device_id": "test",
-                            "version": 2,
-                            "client_version": "android_8",
-                            "client_type": "SDK_ANDROID",
-                        }
-                    ),
-                }
-
-                async with session.post(
-                    f"{CALLS_BASE_URL}/api/auth/anonymLogin", data=auth_payload
-                ) as resp:
-                    print("getting new anonkey")
-                    auth_data = await resp.json()
-                    cached_session_key = auth_data.get("session_key")
-
-                    if not cached_session_key:
-                        return False
-
-        async with aiohttp.ClientSession() as session:
-            lookup_payload = {
-                "application_key": CALLS_API_KEY,
-                "session_key": cached_session_key,
-                "externalIds": json.dumps([{"id": str(telegram_id), "ok_anonym": False}]),
-            }
-
-            async with session.post(
-                f"{CALLS_BASE_URL}/api/vchat/getOkIdsByExternalIds", data=lookup_payload
-            ) as resp:
-                data = await resp.json()
-
-                ids = data.get("ids", [])
-                error_code = data.get("error_code")
-
-                if not ("ids" in data or data.get("error_code") == 4):
-                    cached_session_key = None
-                    continue
-
-                if any(
-                    item.get("external_user_id", {}).get("id") == str(telegram_id)
-                    for item in ids
-                ):
-                    db.append(telegram_id)
-                    with open("db.json", "w") as f:
-                        json.dump(db, f)
-                    return True
-                return False
-
+from checker import TelegaChecker
 
 bot = Bot(token=getenv("APIKEY"))
 dp = Dispatcher()
+
+checker = TelegaChecker()
 
 
 @dp.message(Command("start"))
@@ -113,7 +43,7 @@ async def start(message: types.Message):
         return
     await message.reply("проверяю...")
     await message.reply(
-        f"{id}{'' if await is_telega_user(int(id)) else ' не'} является пользователем Telega."
+        f"{id}{'' if await checker.is_telega_user(int(id)) else ' не'} является пользователем Telega."
     )
 
 
@@ -122,13 +52,13 @@ async def check(message: types.Message):
     if message.chat.type == "private" and message.text and message.text.isdigit():
         await message.reply("проверяю...")
         await message.reply(
-            f"{message.text}{'' if await is_telega_user(int(message.text)) else ' не'} является пользователем Telega."
+            f"{message.text}{'' if await checker.is_telega_user(int(message.text)) else ' не'} является пользователем Telega."
         )
 
 
 @dp.chat_member(ChatMemberUpdatedFilter(IS_NOT_MEMBER >> IS_MEMBER))
 async def joined(event: types.ChatMemberUpdated):
-    if await is_telega_user(event.new_chat_member.user.id):
+    if await checker.is_telega_user(event.new_chat_member.user.id):
         me = await event.bot.get_chat_member(event.chat.id, await event.bot.get_me().id)
         if type(me) == ChatMemberAdministrator and me.can_restrict_members == True:
             await event.chat.ban(event.new_chat_member.user.id)
@@ -148,7 +78,7 @@ async def joined(event: types.ChatMemberUpdated):
 @dp.inline_query(F.query.regexp(r"^\d+$"))
 async def inline_check_id(query: types.InlineQuery):
     user_id = int(query.query)
-    is_telega = await is_telega_user(user_id)
+    is_telega = await checker.is_telega_user(user_id)
     if is_telega:
         title = f"{user_id} — пользователь Telega ❌"
         text = f"{user_id} является пользователем Telega ❌"
