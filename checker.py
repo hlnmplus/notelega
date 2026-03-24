@@ -68,7 +68,6 @@ class TelegaChecker:
                     data = await resp.json()
 
                     ids = data.get("ids", [])
-                    error_code = data.get("error_code")
 
                     if not ("ids" in data or data.get("error_code") == 4):
                         self.cached_session_key = None
